@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"text/template"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -194,28 +195,43 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	// spotifyToken, ok := r.Context().Value("SpotifyToken").(SpotifyToken)
-	luckySong := ""
-	if ok {
-		luckySong = "FIXME"
+	spotifyToken, hasSpotifyToken := r.Context().Value("SpotifyToken").(SpotifyToken)
+	data := struct {
+		Username        string
+		HasSpotifyToken bool
+		LuckySongLink   string
+		ApiLink         string
+	}{
+		Username:        user.Username,
+		HasSpotifyToken: hasSpotifyToken,
+		LuckySongLink:   "https://example.com/lucky-song", // ダミーリンク
+		ApiLink:         "https://example.com/api-link",   // ダミーリンク
 	}
+
+	fmt.Println(spotifyToken)
+
+	tmpl := template.Must(template.New("hello").Parse(`
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title>Hello</title>
+	</head>
+	<body>
+		<h1>Hello</h1>
+		<p>Hello, {{.Username}}</p>
+		{{if .HasSpotifyToken}}
+			<p>Lucky Song: <a href="{{.LuckySongLink}}">Link</a></p>
+		{{else}}
+			<p>Connect your Spotify account: <a href="{{.ApiLink}}">API Link</a></p>
+		{{end}}
+	</body>
+	</html>
+`))
 
 	// Show username
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	// TODO: XSS protection
-	w.Write([]byte(`
-				<!DOCTYPE html>
-				<html lang="en">
-				<head>
-					<meta charset="UTF-8">
-					<title>Hello</title>
-				</head>
-				<body>
-					<h1>Hello</h1>
-					<p>Hello, ` + user.Username + `</p>
-					<p>Lucky Song ` + luckySong + `</p>
-				</body>
-				</html>
-			`))
+
+	tmpl.Execute(w, data)
 }
