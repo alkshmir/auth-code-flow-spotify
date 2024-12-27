@@ -7,6 +7,8 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/alkshmir/auth-code-flow-spotify/models"
+	"github.com/alkshmir/auth-code-flow-spotify/oauth"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -83,7 +85,7 @@ func registerHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		user := User{Username: username, Password: string(hashedPassword)}
+		user := models.User{Username: username, Password: string(hashedPassword)}
 		if err := db.Create(&user).Error; err != nil {
 			http.Error(w, "Error saving user", http.StatusInternalServerError)
 			return
@@ -133,7 +135,7 @@ func loginHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		var user User
+		var user models.User
 		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
@@ -170,14 +172,14 @@ func requireAuth(db *gorm.DB, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		var user User
+		var user models.User
 		if err := db.First(&user, session.UserID).Error; err != nil {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), "user", user)
-		var spotifyToken SpotifyToken
+		var spotifyToken models.SpotifyToken
 		if err := db.Where("user_id = ?", user.ID).First(&spotifyToken).Error; err != nil {
 			fmt.Println("Spotify token not found")
 			ctx = context.WithValue(ctx, "SpotifyToken", nil)
@@ -190,12 +192,18 @@ func requireAuth(db *gorm.DB, next http.HandlerFunc) http.HandlerFunc {
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
 	// コンテキストからユーザ情報を取得
-	user, ok := r.Context().Value("user").(User)
+	user, ok := r.Context().Value("user").(models.User)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	spotifyToken, hasSpotifyToken := r.Context().Value("SpotifyToken").(SpotifyToken)
+	spotifyToken, hasSpotifyToken := r.Context().Value("SpotifyToken").(models.SpotifyToken)
+
+	var songEmbed string
+	if hasSpotifyToken {
+		songEmbed = spotifyToken.GetEmbed(r.Context(), oauth.Oauth2Config())
+	}
+
 	data := struct {
 		Username        string
 		HasSpotifyToken bool
@@ -204,8 +212,8 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Username:        user.Username,
 		HasSpotifyToken: hasSpotifyToken,
-		LuckySongLink:   "https://example.com/lucky-song", // ダミーリンク
-		ApiLink:         "https://example.com/api-link",   // ダミーリンク
+		LuckySongLink:   songEmbed,
+		ApiLink:         "/connect-spotify",
 	}
 
 	fmt.Println(spotifyToken)
@@ -221,7 +229,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		<h1>Hello</h1>
 		<p>Hello, {{.Username}}</p>
 		{{if .HasSpotifyToken}}
-			<p>Lucky Song: <a href="{{.LuckySongLink}}">Link</a></p>
+			<p>Lucky Song: {{ .LuckySongLink }}</p>
 		{{else}}
 			<p>Connect your Spotify account: <a href="{{.ApiLink}}">API Link</a></p>
 		{{end}}
