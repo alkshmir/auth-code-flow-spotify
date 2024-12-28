@@ -97,11 +97,7 @@ func Oauth2CallbackHandler(db *gorm.DB) http.HandlerFunc {
 		// TODO: store token to secure storage
 		fmt.Println("Access token: ", token.AccessToken)
 		fmt.Println("Refresh token: ", token.RefreshToken)
-		spotifyToken := models.SpotifyToken{
-			AccessToken:  token.AccessToken,
-			UserID:       user.ID,
-			RefreshToken: token.RefreshToken,
-		}
+		spotifyToken := models.CreateSpotifyToken(*token, user)
 		if err := db.Create(&spotifyToken).Error; err != nil {
 			http.Error(w, "Error storing token", http.StatusInternalServerError)
 			return

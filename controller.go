@@ -184,7 +184,20 @@ func requireAuth(db *gorm.DB, next http.HandlerFunc) http.HandlerFunc {
 			fmt.Println("Spotify token not found")
 			ctx = context.WithValue(ctx, "SpotifyToken", nil)
 		} else {
-			ctx = context.WithValue(ctx, "SpotifyToken", spotifyToken)
+			err := spotifyToken.Refresh(ctx, oauth.Oauth2Config())
+			if err != nil {
+				fmt.Println("Error refreshing token")
+				ctx = context.WithValue(ctx, "SpotifyToken", nil)
+			} else {
+				// save token to DB
+				if err := db.Save(spotifyToken).Error; err != nil {
+					fmt.Println("Error saving token")
+					ctx = context.WithValue(ctx, "SpotifyToken", nil)
+				} else {
+					fmt.Println("Token refreshed")
+					ctx = context.WithValue(ctx, "SpotifyToken", spotifyToken)
+				}
+			}
 		}
 		next(w, r.WithContext(ctx))
 	}
@@ -201,6 +214,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 
 	var songEmbed string
 	if hasSpotifyToken {
+		fmt.Println("User has Spotify token")
 		songEmbed = spotifyToken.GetEmbed(r.Context(), oauth.Oauth2Config())
 	}
 
